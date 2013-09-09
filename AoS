@@ -1,0 +1,3231 @@
+import pygame
+from pygame.locals import *
+import math
+import random
+
+pygame.init()
+
+window_x = 800
+window_y = 600
+center_x = int(window_x * 0.5)
+center_y = int(window_y * 0.5)
+boss_default_pos = (386, window_y * 0.3)
+player_default_pos = [360, 550]
+framecount = 0
+timer = 30
+font = pygame.font.SysFont('Lucida Console', 20)
+chatfont = pygame.font.SysFont('Lucida Console', 12)
+bigfont = pygame.font.Font('Herculanum.ttf', 40)
+front = pygame.image.load('front.png')
+front = pygame.transform.scale2x(front)
+
+wincondition = False
+#######################Chat############################
+spellcard = False
+number = 0
+press = False
+
+reimu_normal = pygame.image.load('face_rm01no.png')
+reimu_angry = pygame.image.load('face_rm01an.png')
+reimu_confused = pygame.image.load('face_rm01sw.png')
+marisa_angry = pygame.image.load('face_st04b_an.png')
+marisa_troubled = pygame.image.load('face_st04b_ls.png')
+marisa_crazy = pygame.image.load('face_st04b_dp.png')
+
+chat = pygame.image.load('chat.png')
+
+#first convo
+reimu1 = chatfont.render('Marisa, how could you do this to me?', 1, (255,0,0)) #angry
+note = chatfont.render('Press x to continue...', 1, (0,0,0))
+marisa1 = chatfont.render('Nothing is going to keep me and my sakura apart.', 1, (0,0,0)) #angry
+reimu2 = chatfont.render('But Marisa...', 1, (255,0,0)) #confused
+marisa2 = chatfont.render('Sakura is the only one for me! Now I shall punish you!', 1, (0,0,0)) #angry
+#second convo
+reimu3 = chatfont.render('Don\'t ruin the season for the rest of us, Marisa.', 1, (255,0,0)) #normal
+marisa3 = chatfont.render('Wah, they are all on the ground and ruined now...', 1, (0,0,0))#troubled
+#######################Chat############################
+#All important trig functions
+def NormalizeAngle(angle):
+	return angle % 360
+def AngleBetween(pos2, pos1):
+	return NormalizeAngle((math.atan2(pos2[1] - pos1[1], pos2[0] - pos1[0])*(180/math.pi)))
+def DistanceBetween(pos1, pos2):
+	return math.hypot(pos2[0] - pos1[0], pos2[1] - pos1[1])
+def MoveByAngle(angle, dist, pos):
+	radian = angle * (math.pi/180)
+	return (pos[0] + (math.cos(radian) * dist)), (pos[1] + (math.sin(radian) * dist))
+#Timer
+def Timer():
+	global timer
+	if framecount % 60 == 59:
+		if timer > 0:
+			timer -= 1
+		else:
+			timer = 0
+		
+
+#Controls basic loop
+class GameControlClass:
+	def __init__(self):
+		self.loop = self.PlayMode
+		self.event = self.PlayEvent
+		self.EnemyList = []
+		self.BulletList = []
+		self.MiscList = []
+	def __call__(self):
+		self.event()
+		self.loop()
+		global framecount
+		framecount += 1
+		
+	def PlayEvent(self):
+		global running
+		for event in pygame.event.get():
+			if event.type == QUIT:
+				running = False
+		for enemy in self.EnemyList:
+			if enemy.species == EnemyClass.species_marisa:
+				marisahptext = font.render('Marisa: %d' % enemy.life, 1, (155,48,255))
+				WindowSurfaceObj.blit(marisahptext, (154, 3)) #Life reporter
+	def PlayMode(self):
+		global timer
+		global timertext
+		global front
+		global wincondition
+		global framecount
+		if Player.life == 0:
+			pygame.mixer.music.stop()
+		if framecount == 60:
+			pygame.mixer.music.load('patchouli_theme.mp3')
+			pygame.mixer.music.play()
+		if framecount == 1920: #edit when Marisa's time is edited
+			pygame.mixer.music.stop()
+		if framecount == 1980: #top + 60
+			pygame.mixer.music.load('sanae_theme.mp3')
+			pygame.mixer.music.play()
+		
+		pygame.draw.line(WindowSurfaceObj, (255,255,255), (150,0), (150,600))
+		pygame.draw.line(WindowSurfaceObj, (255,255,255), (600,0), (600,600))
+			
+		finishtext = bigfont.render('Game Over.', 1, (155,48,255))
+		cleartext = bigfont.render('Stage Clear!', 1, (155,48,255))
+		finalscoretext = bigfont.render('Score: %d' % Player.score, 1, (155,48,255))
+		if Player.life == 0:
+			self.EnemyList = []
+			self.BulletList = []
+			self.MiscList = []
+			WindowSurfaceObj.fill(pygame.Color(0,0,0))
+			WindowSurfaceObj.blit(finishtext, (280, 200))
+			WindowSurfaceObj.blit(finalscoretext, (210,250))
+			timer = 0
+		if wincondition == True:
+			pygame.time.wait(1000)
+			self.EnemyList = []
+			self.BulletList = []
+			self.MiscList = []
+			WindowSurfaceObj.fill(pygame.Color(0,0,0))
+			WindowSurfaceObj.blit(cleartext, (250,250))
+			WindowSurfaceObj.blit(finalscoretext, (210,300))
+			timer = 0
+			Player.speed = 0
+			
+		timertext = font.render('%d' % timer, 1, (155,48,255))
+		WindowSurfaceObj.blit(timertext, (560, 10)) #timer
+		
+		WindowSurfaceObj.blit(front, (615, 20), (0, 190, 76, 33)) #score
+		scoretext = font.render('%d' % Player.score, 1, (255,183,197))
+		WindowSurfaceObj.blit(scoretext, (615, 60))
+		
+		WindowSurfaceObj.blit(front, (615, 87), (0, 351, 70, 32)) #point
+		pointtext = font.render('%d' % Player.point, 1, (255,183,197))
+		pointlimtext = font.render('/ %d' % Player.pointlim, 1, (155,48,255))
+		WindowSurfaceObj.blit(pointtext, (615, 126))
+		WindowSurfaceObj.blit(pointlimtext, (639, 126))
+		
+		WindowSurfaceObj.blit(front, (10, 20), (0, 224, 84, 30)) #player life
+		WindowSurfaceObj.blit(front, (10, 50), (131, 161, 27, 27)) #player life point star
+		lifetext = font.render('%d' % Player.life, 1, (255,183,197))
+		WindowSurfaceObj.blit(lifetext, (40, 57))
+		
+		WindowSurfaceObj.blit(front, (10, 84), (0, 288, 82, 31)) #power
+		powertext = font.render('%d' % Player.power, 1, (155,48,255))
+		WindowSurfaceObj.blit(powertext, (10, 122))
+		
+		WindowSurfaceObj.blit(front, (10, 149), (0, 319, 75, 33)) #graze
+		grazetext = font.render('%d' % Player.graze, 1, (155,48,255))
+		WindowSurfaceObj.blit(grazetext, (10, 189))
+		
+		Timer()
+		Player.PlayerDeath()
+		Player.FullPowerMode()
+		if Player.life > 0:
+			Player.Movement()
+			Player.DrawSprite()
+		self.ProcessEnemies()
+		self.ProcessBullets()
+		self.ProcessMisc()
+		
+		pygame.display.update()
+		WindowSurfaceObj.fill(pygame.Color(0,0,0))
+		ClockObj.tick(FPS)
+		
+	def CreateEnemy(self, kwargswaps = [], **kwargs):
+		self.EnemyList.append(EnemyClass(kwargs, kwargswaps))
+	def ProcessEnemies(self):
+		i = 0
+		while (i < len(self.EnemyList)):
+			if self.EnemyList[i]():
+				i += 1
+			else:
+				del self.EnemyList[i]
+	def CreateBullet(self, kwargswaps = [], **kwargs):
+		self.BulletList.append(BulletClass(kwargs, kwargswaps))
+	def ProcessBullets(self):
+		i = 0
+		while (i < len(self.BulletList)):
+			if self.BulletList[i]():
+				i += 1
+			else:
+				del self.BulletList[i]
+	def CreateMisc(self, kwargswaps = [], **kwargs):
+		self.MiscList.append(MiscClass(kwargs, kwargswaps))
+	def ProcessMisc(self):
+		i = 0
+		while (i < len(self.MiscList)):
+			if self.MiscList[i]():
+				i += 1
+			else:
+				del self.MiscList[i]
+		
+		
+class PlayerClass:
+	def __init__(self):
+		self.life = 3
+		self.power = 0
+		self.fullpowermode = False
+		self.graze = 0
+		self.score = 0
+		self.point = 0
+		self.pointlim = 7
+		#self.spellcard = 3
+		self.distances = []
+		
+		self.HitRadius = 5
+		self.MoveSpeed = 5
+		self.pos = player_default_pos
+		self.frame = 0
+		self.leftframe = 0
+		self.checkleft = False
+		self.rightframe = 0
+		self.RightSheet = pygame.transform.flip(Sprite.sheet, True, False)
+		self.stationary = True
+		self.hitboxsheet = pygame.image.load('etama2.png')
+		 #changed
+	def Movement(self):
+		#keys
+		self.stationary = True
+		KeyList = pygame.key.get_pressed()
+		if (KeyList[K_UP]):
+			if self.pos[1] <= 1:
+				self.pos[1] = 1
+			elif (KeyList[K_LSHIFT]):
+				self.pos[1] -= (self.MoveSpeed - 3.6)
+			else:
+				if self.pos[1] <= 1:
+					self.pos[1] = 1
+				else:
+					self.pos[1] -= self.MoveSpeed
+		if (KeyList[K_DOWN]):
+			if self.pos[1] >= 550:
+				self.pos[1] = 550
+			elif (KeyList[K_LSHIFT]):
+				self.pos[1] += (self.MoveSpeed - 3.6)
+			else:
+				if self.pos[1] >= 550:
+					self.pos[1] = 550
+				else:
+					self.pos[1] += self.MoveSpeed
+		if (KeyList[K_LEFT]):
+			self.stationary = False
+			self.checkleft = True
+			if self.pos[0] <= 137:
+				self.pos[0] = 137
+			elif (KeyList[K_LSHIFT]):
+				self.pos[0] -= (self.MoveSpeed - 3.6)
+			else:
+				if self.pos[0] <= 137:
+					self.pos[0] = 137
+				else:
+					self.pos[0] -= self.MoveSpeed
+			Sprite.AnimateLeft()
+			
+		if (KeyList[K_RIGHT]):
+			self.stationary = False
+			if self.pos[0] >= 586:
+				self.pos[0] = 586
+			elif (KeyList[K_LSHIFT]):
+				self.pos[0] += (self.MoveSpeed - 3.6)
+			else:
+				if self.pos[0] >= 586:
+					self.pos[0] = 586
+				else:
+					self.pos[0] += self.MoveSpeed
+			Sprite.AnimateRight()
+		if (KeyList[K_z]): #shot
+				if (KeyList[K_LSHIFT]):
+						if framecount % 6 == 0:
+							CreateBullet(
+							    pos = Player.pos,
+							    angle = 270,
+							    curve = 0,
+							    curvemod = 0,
+							    curvelim = 0,
+							    speed = 12,
+							    accel = 0,
+							    accelmod = 0,
+							    accellim = 0,
+							    color = (0, 0, 0),
+							    behavior = BulletClass.behavior_default,
+							    species = BulletClass.species_shot
+							    )
+						if Player.power >= 10:
+							if framecount % 6 == 0:
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 273,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_shot
+								    )
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 267,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_shot
+								    )
+						if Player.power >= 20:
+							if framecount % 6 == 0:
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 269,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_xtrashot
+								    )
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 271,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_xtrashot
+								    )
+						if Player.power >= 28:
+							if framecount % 6 == 0:
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 268,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_xtrashot
+								    )
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 272,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_xtrashot
+								    )
+				else:
+					if Player.power >= 0:
+						if framecount % 6 == 0:
+							CreateBullet(
+							    pos = Player.pos,
+							    angle = 270,
+							    curve = 0,
+							    curvemod = 0,
+							    curvelim = 0,
+							    speed = 12,
+							    accel = 0,
+							    accelmod = 0,
+							    accellim = 0,
+							    color = (0, 0, 0),
+							    behavior = BulletClass.behavior_default,
+							    species = BulletClass.species_shot
+							    )
+					if Player.power >= 10:
+						if framecount % 6 == 0:
+							CreateBullet(
+							    pos = Player.pos,
+							    angle = 275,
+							    curve = 0,
+							    curvemod = 0,
+							    curvelim = 0,
+							    speed = 12,
+							    accel = 0,
+							    accelmod = 0,
+							    accellim = 0,
+							    color = (0, 0, 0),
+							    behavior = BulletClass.behavior_default,
+							    species = BulletClass.species_shot
+							    )
+							CreateBullet(
+							    pos = Player.pos,
+							    angle = 265,
+							    curve = 0,
+							    curvemod = 0,
+							    curvelim = 0,
+							    speed = 12,
+							    accel = 0,
+							    accelmod = 0,
+							    accellim = 0,
+							    color = (0, 0, 0),
+							    behavior = BulletClass.behavior_default,
+							    species = BulletClass.species_shot
+							    )
+					if Player.power >= 20:
+							if framecount % 6 == 0:
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 250,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_xtrashot
+								    )
+								CreateBullet(
+								    pos = Player.pos,
+								    angle = 290,
+								    curve = 0,
+								    curvemod = 0,
+								    curvelim = 0,
+								    speed = 12,
+								    accel = 0,
+								    accelmod = 0,
+								    accellim = 0,
+								    color = (0, 0, 0),
+								    behavior = BulletClass.behavior_default,
+								    species = BulletClass.species_xtrashot
+								    )
+					if Player.power >= 28:
+						if framecount % 6 == 0:
+							CreateBullet(
+							    pos = Player.pos,
+							    angle = 280,
+							    curve = 0,
+							    curvemod = 0,
+							    curvelim = 0,
+							    speed = 12,
+							    accel = 0,
+							    accelmod = 0,
+							    accellim = 0,
+							    color = (0, 0, 0),
+							    behavior = BulletClass.behavior_default,
+							    species = BulletClass.species_xtrashot
+							    )
+							CreateBullet(
+							    pos = Player.pos,
+							    angle = 260,
+							    curve = 0,
+							    curvemod = 0,
+							    curvelim = 0,
+							    speed = 12,
+							    accel = 0,
+							    accelmod = 0,
+							    accellim = 0,
+							    color = (0, 0, 0),
+							    behavior = BulletClass.behavior_default,
+							    species = BulletClass.species_xtrashot
+							    ) 
+	def HitBox(self):
+		WindowSurfaceObj.blit(self.hitboxsheet,
+				      (int(self.pos[0]) - 16, int(self.pos[1]) - 4),
+				      (0, 115, 64, 60))
+		if self.power >= 15:
+			WindowSurfaceObj.blit(self.hitboxsheet,
+				      (int(self.pos[0]) - 16, int(self.pos[1]) - 4),
+				      (129, 113, 63, 63))
+		if self.power >= 28:
+			WindowSurfaceObj.blit(self.hitboxsheet,
+				      (int(self.pos[0]) - 16, int(self.pos[1]) - 4),
+				      (194, 115, 60, 60))
+	def DrawSprite(self): #fixed animation!! use 7x
+		#stationary
+		self.checkleft = False
+		self.checkright = False
+		Sprite.AnimateStationary()
+		self.HitBox()
+		if self.point == self.pointlim:
+			self.pointlim *= 2
+			self.life += 1
+	def PowerPenalty(self):
+		for a in range(0, 360, (360/7)):
+			CreateMisc([
+					dict(
+							age = 10,
+							pos = lambda s: s.pos,
+							angle = lambda s: 270,
+							curve = lambda s: s.curve,
+							curvemod = lambda s: s.curvemod,
+							curvelim = lambda s: s.curvelim,
+							speed = lambda s: s.speed + 12,
+							accel = lambda s: s.accel,
+							accelmod = lambda s: 0,
+							accellim = lambda s: s.accellim,
+							color = lambda s: (0,0,0),
+							behavior = MiscClass.behavior_default,
+							species = MiscClass.species_smallpwr
+							),
+					dict(
+							age = 50,
+							pos = lambda s: s.pos,
+							angle = lambda s: 90,
+							curve = lambda s: s.curve,
+							curvemod = lambda s: s.curvemod,
+							curvelim = lambda s: s.curvelim,
+							speed = lambda s: 1.2,
+							accel = lambda s: s.accel + 0.1,
+							accelmod = lambda s: s.accelmod,
+							accellim = lambda s: s.accellim,
+							color = lambda s: (0,0,0),
+							behavior = MiscClass.behavior_default,
+							species = MiscClass.species_smallpwr
+							)],
+									pos = self.pos,
+									angle = 270,
+									curve = 0,
+									curvemod = 0,
+									curvelim = 0,
+									speed = 0,
+									accel = 0,
+									accelmod = 0,
+									accellim = 2.2,
+									color = (0, 0, 0),
+									behavior = MiscClass.behavior_default,
+									species = MiscClass.species_smallpwr
+									)
+	def PlayerDeath(self):
+		if self.life > 0:
+			for bullet in GameControlObj.BulletList:
+				if DistanceBetween((self.pos[0] + 15, self.pos[1] + 23), bullet.pos) <= 5:
+					GameControlObj.BulletList = []
+					if self.power >= 7:
+						self.PowerPenalty()
+						self.power -= 7
+					self.pos = [center_x, window_y * 0.9] ##edit this later?
+					self.life -= 1
+					#self.spellcard = 3
+	def FullPowerMode(self):
+		if self.power < 28:
+			self.fullpowermode = False
+		if self.power > 28:
+			self.power = 28
+		if self.power == 28:
+			if self.fullpowermode == False:
+				CreateMisc(
+					pos = (275, 200),
+					angle = 0,
+					curve = 0,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 0,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (0, 0, 0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_fullpowermode
+					)
+			self.fullpowermode = True
+
+#animates by the mod of the framecount to slow down animation
+class SpriteClass:
+	def __init__(self):
+		self.sheet = pygame.image.load('player00.png')
+		self.bulletsheet = pygame.image.load('etama.png')
+		self.marisasheet = pygame.image.load('stg4benm.png')
+		self.reversemarisa = pygame.transform.flip(self.marisasheet, True, False)
+		self.enemysheet = pygame.image.load('enemy.png')
+		self.reverseenemy = pygame.transform.flip(self.enemysheet, True, False)
+		self.left_states = {0:(0, 51, 32, 47), ##some of these are not used
+							1:(31, 51, 32, 47),
+							2:(63, 51, 32, 47),
+							3:(95, 51, 32, 47),
+							4:(127, 51, 32, 47),
+							5:(159, 51, 32, 47),
+							6:(191, 51, 32, 47)}
+		self.right_states = {0:(223, 51, 32, 47),
+							 1:(191, 51, 32, 47),
+							 2:(159, 51, 32, 47),
+							 3:(127, 51, 32, 47),
+							 4:(95, 51, 32, 47),
+							 5:(63, 51, 32, 47),
+							 6:(31, 51, 32, 47)}
+		self.null_states = {0:(0, 0, 32, 51),
+						  1:(32, 0, 32, 51),
+						  2:(64, 0, 32, 51),
+						  3:(96, 0, 32, 51)}
+		#Marisa
+		self.marisa_null_states = {0:(0, 0, 64, 78),
+								   1:(64, 0, 64, 78),
+								   2:(128, 0, 64, 78),
+								   3:(192, 0, 64, 78)} 
+		self.marisa_right_states = {0:(0, 81, 64, 78),
+									1:(61, 81, 64, 78),
+									2:(125, 81, 64, 78),
+									3:(189, 81, 64, 78)}
+		self.marisa_left_states = {0:(189, 81, 64, 78),
+								   1:(125, 81, 64, 78),
+								   2:(61, 81, 64, 78),
+								   3:(0, 81, 64, 78)}
+		
+		self.rightmarisa = False
+		self.leftmarisa = False
+		
+		self.blueangel_null_states = {0:(0, 0, 32, 32),
+									  1:(32, 0, 32, 32),
+									  2:(64, 0, 32, 32),
+									  3:(96, 0, 32, 32)}
+		self.blueangel_left_states = {0:(224, 0, 32, 32),
+									  1:(192, 0, 32, 32),
+									  2:(160, 0, 32, 32),
+									  3:(128, 0, 32, 32)}
+		self.blueangel_right_states = {0:(256, 0, 32, 32),
+									   1:(288, 0, 32, 32),
+									   2:(320, 0, 32, 32),
+									   3:(352, 0, 32, 32)}
+		self.leftblueangel = False
+		self.rightblueangel = False
+		
+		self.pinkangel_null_states = {0:(0, 32, 32, 32),
+									  1:(32, 32, 32, 32),
+									  2:(64, 32, 32, 32),
+									  3:(96, 32, 32, 32)}
+		self.pinkangel_left_states = {0:(224, 32, 32, 32),
+									  1:(192, 32, 32, 32),
+									  2:(160, 32, 32, 32),
+									  3:(128, 32, 32, 32)}
+		self.pinkangel_right_states = {0:(256, 32, 32, 32),
+									   1:(288, 32, 32, 32),
+									   2:(320, 32, 32, 32),
+									   3:(352, 32, 32, 32)}
+		self.leftpinkangel = False
+		self.rightpinkangel = False
+		
+		self.greenangel_null_states = {0:(0, 64, 32, 32),
+									  1:(32, 64, 32, 32),
+									  2:(64, 64, 32, 32),
+									  3:(96, 64, 32, 32)}
+		self.greenangel_left_states = {0:(224, 64, 32, 32),
+									  1:(192, 64, 32, 32),
+									  2:(160, 64, 32, 32),
+									  3:(128, 64, 32, 32)}
+		self.greenangel_right_states = {0:(256, 64, 32, 32),
+									   1:(288, 64, 32, 32),
+									   2:(320, 64, 32, 32),
+									   3:(352, 64, 32, 32)}
+		self.leftgreenangel = False
+		self.rightgreenangel = False
+		
+	def AnimateStationary(self):
+		if Player.stationary == True:
+			if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+				WindowSurfaceObj.blit(self.sheet,
+									  (int(Player.pos[0]), int(Player.pos[1])),
+									  self.null_states[0])
+			if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+				WindowSurfaceObj.blit(self.sheet,
+									  (int(Player.pos[0]), int(Player.pos[1])),
+									  self.null_states[1])
+			if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+				WindowSurfaceObj.blit(self.sheet,
+									  (int(Player.pos[0]), int(Player.pos[1])),
+									  self.null_states[2])
+			if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+				WindowSurfaceObj.blit(self.sheet,
+									  (int(Player.pos[0]), int(Player.pos[1])),
+									  self.null_states[3])
+	def AnimateLeft(self): #prototypes
+		if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+			WindowSurfaceObj.blit(self.sheet, (int(Player.pos[0]),
+													int(Player.pos[1])),
+								  self.left_states[3])
+		if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+			WindowSurfaceObj.blit(self.sheet, (int(Player.pos[0]),
+													int(Player.pos[1])),
+								  self.left_states[4])
+		if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+			WindowSurfaceObj.blit(self.sheet, (int(Player.pos[0]),
+													int(Player.pos[1])),
+								  self.left_states[5])
+		if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+			WindowSurfaceObj.blit(self.sheet, (int(Player.pos[0]),
+													int(Player.pos[1])),
+								  self.left_states[6])
+	def AnimateRight(self):
+		if Player.checkleft == False:
+			if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+				WindowSurfaceObj.blit(Player.RightSheet, (int(Player.pos[0]),
+														int(Player.pos[1])),
+									  self.right_states[3])
+			if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+				WindowSurfaceObj.blit(Player.RightSheet, (int(Player.pos[0]),
+														int(Player.pos[1])),
+									  self.right_states[4])
+			if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+				WindowSurfaceObj.blit(Player.RightSheet, (int(Player.pos[0]),
+														int(Player.pos[1])),
+									  self.right_states[5])
+			if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+				WindowSurfaceObj.blit(Player.RightSheet, (int(Player.pos[0]),
+														int(Player.pos[1])),
+									  self.right_states[6])
+									  
+	def AnimateStationaryMarisa(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_marisa:
+				if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+					WindowSurfaceObj.blit(self.marisasheet,
+										  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+										  self.marisa_null_states[0])
+				if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+					WindowSurfaceObj.blit(self.marisasheet,
+										  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 38.4)),
+										  self.marisa_null_states[1])
+				if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+					WindowSurfaceObj.blit(self.marisasheet,
+										  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 37.8)),
+										  self.marisa_null_states[2])
+				if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+					WindowSurfaceObj.blit(self.marisasheet,
+										  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 37.2)),
+										  self.marisa_null_states[3])			
+	def AnimateRightMarisa(self): 
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_marisa:
+				if self.rightmarisa == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.marisasheet,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_right_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.marisasheet,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_right_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.marisasheet,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_right_states[2])
+						self.rightmarisa = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.marisasheet,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_right_states[3])
+				else:
+					WindowSurfaceObj.blit(self.marisasheet,
+										  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+										  self.marisa_right_states[3])
+	def AnimateLeftMarisa(self): 
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_marisa:
+				if self.leftmarisa == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.reversemarisa,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_left_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.reversemarisa,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_left_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.reversemarisa,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_left_states[2])
+						self.leftmarisa = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.reversemarisa,
+											  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+											  self.marisa_left_states[3])
+				else:
+					WindowSurfaceObj.blit(self.reversemarisa,
+										  (int(enemy.pos[0] - 32), int(enemy.pos[1] - 39)),
+										  self.marisa_left_states[3])
+			
+	def AnimateStationaryBlueAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_blueangel:
+				if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.blueangel_null_states[0])
+				if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.blueangel_null_states[1])
+				if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.blueangel_null_states[2])
+				if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.blueangel_null_states[3])
+	def AnimateLeftBlueAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_blueangel:
+				if self.leftblueangel == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_left_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_left_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_left_states[2])
+						self.leftblueangel = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_left_states[3])
+				else:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.blueangel_left_states[3])
+	def AnimateRightBlueAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_blueangel:
+				if self.rightblueangel == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_right_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_right_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_right_states[2])
+						self.rightblueangel = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.blueangel_right_states[3])
+				else:
+					WindowSurfaceObj.blit(self.reverseenemy,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.blueangel_right_states[3])
+	
+	def AnimateStationaryPinkAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_pinkangel:
+				if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.pinkangel_null_states[0])
+				if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.pinkangel_null_states[1])
+				if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.pinkangel_null_states[2])
+				if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.pinkangel_null_states[3])
+	def AnimateLeftPinkAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_pinkangel:
+				if self.leftpinkangel == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_left_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_left_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_left_states[2])
+						self.leftpinkangel = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_left_states[3])
+				else:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.pinkangel_left_states[3])
+	def AnimateRightPinkAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_pinkangel:
+				if self.rightpinkangel == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_right_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_right_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_right_states[2])
+						self.rightpinkangel = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.pinkangel_right_states[3])
+				else:
+					WindowSurfaceObj.blit(self.reverseenemy,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.pinkangel_right_states[3])
+	
+	def AnimateStationaryGreenAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_greenangel:
+				if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.greenangel_null_states[0])
+				if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.greenangel_null_states[1])
+				if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.greenangel_null_states[2])
+				if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.greenangel_null_states[3])
+	def AnimateLeftGreenAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_greenangel:
+				if self.leftgreenangel == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_left_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_left_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_left_states[2])
+						self.leftpinkangel = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.enemysheet,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_left_states[3])
+				else:
+					WindowSurfaceObj.blit(self.enemysheet,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.greenangel_left_states[3])
+	def AnimateRightGreenAngel(self):
+		for enemy in GameControlObj.EnemyList:
+			if enemy.species == EnemyClass.species_greenangel:
+				if self.rightgreenangel == False:
+					if (framecount % 28) >= 0 and (framecount % 28) <= 6:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_right_states[0])
+					if (framecount % 28) >= 7 and (framecount % 28) <= 13:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_right_states[1])
+					if (framecount % 28) >= 14 and (framecount % 28) <= 20:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_right_states[2])
+						self.rightpinkangel = True
+					if (framecount % 28) >= 21 and (framecount % 28) <= 27:
+						WindowSurfaceObj.blit(self.reverseenemy,
+											  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+											  self.greenangel_right_states[3])
+				else:
+					WindowSurfaceObj.blit(self.reverseenemy,
+										  (int(enemy.pos[0] - 16), int(enemy.pos[1] - 16)),
+										  self.greenangel_right_states[3])
+	
+Sprite = SpriteClass()
+		
+class EnemyClass:
+	def __init__(self, kwargs, kwargswaps):
+		self.life = kwargs['life']
+		self.pos = kwargs['pos']
+		self.size = kwargs['size']
+		self.angle = kwargs['angle']
+		self.curve = kwargs['curve']
+		self.curvemod = kwargs['curvemod']
+		self.curvelim = kwargs['curvelim']
+		self.speed = kwargs['speed']
+		self.accel = kwargs['accel']
+		self.accelmod = kwargs['accelmod']
+		self.accellim = kwargs['accellim']
+		r,g,b = kwargs['color']
+		self.behavior = kwargs['behavior']
+		self.species = kwargs['species']
+		self.pattern = kwargs['pattern']##pattern
+		self.kwargswaps = kwargswaps
+		self.color = pygame.Color(r,g,b, 255)
+		self.alive = True
+		self.age = 0
+		self.speedchange = 0.0
+		self.anglechange = 0.0
+		
+
+		# Temp
+		self.surf = pygame.Surface((12, 12))
+		pygame.draw.circle(self.surf, (self.color), (6,6), 6)
+		self.surf.convert()
+		
+	def __call__(self):
+		self.behavior(self)
+		self.species(self)
+		self.pattern(self)
+		if (self.kwargswaps):
+			self.swapkwargs()
+		self.age += 1
+		return self.alive
+	def CheckOOB(self):
+		if 150 <= self.pos[0] <= 600:
+			if 2 <= self.pos[1] <= 550:
+				return True
+		return False
+	def swapkwargs(self):
+		if (self.age >= self.kwargswaps[0]['age']):
+			self.life = self.kwargswaps[0]['life'](self)
+			self.size = self.kwargswaps[0]['size'](self) #This doesn't set size! Write the actual size here so calculations for death are correct
+			self.angle = self.kwargswaps[0]['angle'](self)
+			self.curve = self.kwargswaps[0]['curve'](self)
+			self.curvemod = self.kwargswaps[0]['curvemod'](self)
+			self.curvelim = self.kwargswaps[0]['curvelim'](self)
+			self.speed = self.kwargswaps[0]['speed'](self)
+			self.accel = self.kwargswaps[0]['accel'](self)
+			self.accelmod = self.kwargswaps[0]['accelmod'](self)
+			self.accellim = self.kwargswaps[0]['accellim'](self)
+			r,g,b = self.kwargswaps[0]['color'](self)
+			self.behavior = self.kwargswaps[0]['behavior']
+			self.species = self.kwargswaps[0]['species']
+			self.pattern = self.kwargswaps[0]['pattern']
+			self.color = (r,g,b, 255)
+			self.speedchange = 0.0
+			self.anglechange = 0.0
+			del self.kwargswaps[0]
+			
+			
+			# Temp
+			pygame.draw.circle(self.surf, (self.color), (6,6), 6)
+	
+	# Behaviors
+	def behavior_default(self):
+				self.pos = MoveByAngle(self.angle, self.speed, self.pos)
+				if (self.anglechange < self.curvelim):
+						self.angle += self.curve
+						self.anglechange += abs(self.curve)
+						self.curve += self.curvemod
+				if (self.speedchange < self.accellim):
+						self.speed += self.accel
+						self.speedchange += abs(self.accel)
+						self.accel += self.accelmod
+				if (self.speed < 0):
+						self.speed = 0
+				self.alive = self.CheckOOB()
+	def behavior_pass(self):
+		pass
+	
+	# Species	
+	def species_test(self):
+		if self.life == 0:
+					self.alive = False
+		WindowSurfaceObj.blit(self.surf,(int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))))
+		if self.alive == False:	
+			CreateMisc([
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.3,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_smallpwr
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.1,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_smallpwr
+					)],
+				pos = self.pos,
+				angle = 90,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_smallpwr
+				)
+	def species_marisa(self):
+		global timer
+		global spellcard
+		if self.life <= 0:
+			self.life = 0
+			spellcard = False
+			timer = 0
+			GameControlObj.BulletList = []
+			self.pattern = EnemyClass.pattern_dialogue2
+			Player.score += 3500 * timer
+			if timer == 0:
+				CreateMisc(
+					pos = (275, 200),
+					angle = 0,
+					curve = 0,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 0,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (0, 0, 0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_spellcardfailed
+					)
+			#homes back to to default position
+			
+		if (self.angle < 270 and self.angle > 90) and self.speed > 0:#left
+			Sprite.rightmarisa = False
+			Sprite.AnimateLeftMarisa()
+		if (self.angle > 270 or self.angle < 90) and self.speed > 0:#right
+			Sprite.leftmarisa = False
+			Sprite.AnimateRightMarisa()
+		if self.angle == 90 or self.angle == 270 or self.speed == 0:
+			Sprite.leftmarisa = False
+			Sprite.rightmarisa = False
+			Sprite.AnimateStationaryMarisa()
+			
+		if timer == 0:
+			self.life == 0
+
+	
+	def species_blueangel(self):
+		global timer
+		if self.life <= 0:
+			self.alive = False
+			self.pattern = EnemyClass.pattern_dropsmallpwr
+			if timer > 0:
+				Player.score += 7000
+		if self.angle < 270 and self.angle > 90:#left
+			Sprite.rightblueangel = False
+			Sprite.AnimateLeftBlueAngel()
+		if self.angle > 270 or self.angle < 90:#right
+			Sprite.leftblueangel = False
+			Sprite.AnimateRightBlueAngel()
+		if self.angle == 90 or self.angle == 270:
+			Sprite.leftblueangel = False
+			Sprite.rightblueangel = False
+			Sprite.AnimateStationaryBlueAngel()	
+	def species_pinkangel(self):
+		global timer
+		if self.life <= 0:
+			self.alive = False
+			self.pattern = EnemyClass.pattern_dropsmallpwr
+			if timer > 0:
+				Player.score += 7500
+		if self.angle < 270 and self.angle > 90:#left
+			Sprite.rightpinkangel = False
+			Sprite.AnimateLeftPinkAngel()
+		if self.angle > 270 or self.angle < 90:#right
+			Sprite.leftpinkangel = False
+			Sprite.AnimateRightPinkAngel()
+		if self.angle == 90 or self.angle == 270:
+			Sprite.leftpinkangel = False
+			Sprite.rightpinkangel = False
+			Sprite.AnimateStationaryPinkAngel()
+	def species_greenangel(self):
+		global timer
+		if self.life <= 0:
+			self.alive = False
+			self.pattern = EnemyClass.pattern_droplargepwr
+			if timer > 0:
+				Player.score += 10000
+		if self.angle < 270 and self.angle > 90:#left
+			Sprite.rightgreenangel = False
+			Sprite.AnimateLeftGreenAngel()
+		if self.angle > 270 or self.angle < 90:#right
+			Sprite.leftgreenangel = False
+			Sprite.AnimateRightGreenAngel()
+		if self.angle == 90 or self.angle == 270:
+			Sprite.leftgreenangel = False
+			Sprite.rightgreenangel = False
+			Sprite.AnimateStationaryGreenAngel()
+			
+	def pattern_test(self):
+		if self.age % 20 == 1:
+			for a in range(0, 360, (360/45)): ##every 45 degrees; 8 = the # of bullets
+			##the second number is the # of revolutions
+				CreateBullet(
+					[dict(
+					age = 10,
+					angle = lambda s: s.angle + 30,
+					curve = lambda s: s.curve + 20,
+					curvemod = lambda s: s.curvemod + 5,
+					curvelim = lambda s: s.curvelim + 30,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_pinkbullet
+					),
+					dict(
+					age = 40,
+					angle = lambda s: s.angle - 60, #autotarget player
+					curve = lambda s: s.curve - 40, #whatever it already had
+					curvemod = lambda s: s.curvemod - 5,
+					curvelim = lambda s: s.curvelim + 30,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_ssspinkbullet
+					)],
+							 pos = boss_default_pos,
+							 angle = a + AngleBetween(Player.pos, boss_default_pos) + 15, ##angle traveled; this ring will span out
+							 curve = 0, #clockwise
+							 curvemod = 0,
+							 curvelim = 0,
+							 speed = 10,
+							 accel = -0.5, #how much speed changes per frame
+							 accelmod = 0, #how much accel changes per frame
+							 accellim = 7.5, #how far accel can go with regard to speed
+							 color = (255, 183, 197),
+							 behavior = BulletClass.behavior_default, # no () because it's pointing, not calling
+							 species = BulletClass.species_pinkbullet
+							 )  
+	def pattern_pinkcircle30(self):
+		if (self.age % 30 == 1):
+			for a in range(0, 360, (360/60)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_pinkbullet
+					)
+	def pattern_pinkcircle60(self):
+		if (self.age % 60 == 1):
+			for a in range(0, 360, (360/30)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_pinkbullet
+					)
+	def pattern_redblue(self):				
+		if (self.age % 60 == 1):
+			for a in range(0, 360, (360/30)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_redbullet
+					)
+		if (self.age % 65 == 1):
+			for a in range(0, 360, (360/25)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_bluebullet
+					)
+	def pattern_bluedown120(self):
+		if (self.age % 120 == 10):
+			for a in range(0, 360, (360/10)):
+				CreateBullet([dict(
+					age = 60,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: 0,
+					curvemod = lambda s: 0,
+					curvelim = lambda s: 0,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_bluebullet)],
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_bluebullet
+					)
+	def pattern_redbluehalf(self):
+		if (self.age % 120 == 1):
+			for a in range(0, 360, (360/20)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_redbullet
+					)
+		if (self.age % 125 == 1):
+			for a in range(0, 360, (360/15)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_bluebullet
+					)
+	def pattern_noatk(self):
+		GameControlObj.BulletList = []
+	
+	def pattern_blossom(self): ##
+		if self.age % 18 == 1:
+			for a in range(0, 360, (360/45)): ##every 45 degrees; 8 = the # of bullets
+			#the second number is the # of revolutions
+				CreateBullet(
+					[dict(
+					age = 10,
+					angle = lambda s: s.angle + 30,
+					curve = lambda s: s.curve + 20,
+					curvemod = lambda s: s.curvemod + 5,
+					curvelim = lambda s: s.curvelim + 30,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_pinkbullet
+					),
+					dict(
+					age = 40,
+					angle = lambda s: s.angle - 60, #autotarget player
+					curve = lambda s: s.curve - 40, #whatever it already had
+					curvemod = lambda s: s.curvemod - 5,
+					curvelim = lambda s: s.curvelim + 30,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_ssspinkbullet
+					)],
+							 pos = self.pos,
+							 angle = a + AngleBetween(Player.pos, self.pos) + 15, ##angle traveled; this ring will span out
+							 curve = 0, #clockwise
+							 curvemod = 0,
+							 curvelim = 0,
+							 speed = 10,
+							 accel = -0.5, #how much speed changes per frame
+							 accelmod = 0, #how much accel changes per frame
+							 accellim = 7.5, #how far accel can go with regard to speed
+							 color = (255, 183, 197),
+							 behavior = BulletClass.behavior_default, # no () because it's pointing, not calling
+							 species = BulletClass.species_pinkbullet
+							 )
+	def pattern_sakura(self): #used
+		if self.age % 20 == 1:
+			for a in range(0, 360, (360/45)): ##every 45 degrees; 8 = the # of bullets
+			#the second number is the # of revolutions
+				CreateBullet(
+					[dict(
+					age = 10,
+					angle = lambda s: s.angle + 30,
+					curve = lambda s: s.curve + 20,
+					curvemod = lambda s: s.curvemod + 2,
+					curvelim = lambda s: s.curvelim + 30,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_pinkbullet
+					),
+					dict(
+					age = 40,
+					angle = lambda s: s.angle - 60, #autotarget player
+					curve = lambda s: s.curve - 40, #whatever it already had
+					curvemod = lambda s: s.curvemod - 2,
+					curvelim = lambda s: s.curvelim + 30,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_ssspinkbullet
+					),
+					dict(
+					age = 40,
+					angle = lambda s: s.angle, #autotarget player
+					curve = lambda s: s.curve, #whatever it already had
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: 2,
+					accel = lambda s: 0,
+					accelmod = lambda s: 0,
+					accellim = lambda s: 0,
+					color = lambda s: (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_sspinkbullet
+					)],
+						 pos = self.pos,
+						 angle = a + AngleBetween(Player.pos, self.pos) + 25, ##angle traveled; this ring will span out
+						 curve = 0, #clockwise
+						 curvemod = 0,
+						 curvelim = 0,
+						 speed = 10,
+						 accel = -0.5, #how much speed changes per frame
+						 accelmod = 0, #how much accel changes per frame
+						 accellim = 7.5, #how far accel can go with regard to speed
+						 color = (255, 183, 197),
+						 behavior = BulletClass.behavior_default, # no () because it's pointing, not calling
+						 species = BulletClass.species_pinkbullet
+						 )
+		if (self.age % 60 == 1):
+			for a in range(0, 360, (360/20)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_pinkbullet
+					)
+		if (self.age % 1200 == 1):
+			for a in range(150, 600, (450/18)):
+				CreateBullet(
+					pos = [a, 2],
+					angle = 90,
+					curve = 0,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 6,
+					accel = -0.1,
+					accelmod = -0.4,
+					accellim = 4.1,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_pinkbullet
+					)
+	def pattern_redblue45(self): #used
+		if self.age % 45 == 1:
+			for a in range(0, 360, (360/30)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_redbullet
+					)
+			for a in range(0, 360, (360/25)):
+				CreateBullet(
+					pos = self.pos,
+					angle = a + AngleBetween(Player.pos, self.pos) - 15,
+					curve = 10,
+					curvemod = 0,
+					curvelim = 0,
+					speed = 2,
+					accel = 0,
+					accelmod = 0,
+					accellim = 0,
+					color = (255, 183, 197),
+					behavior = BulletClass.behavior_default,
+					species = BulletClass.species_bluebullet
+					)
+					
+	def pattern_dialogue(self):
+		GameControlObj.BulletList = []
+		global number
+		global press
+		global spellcard
+		Key = pygame.key.get_pressed()
+		if (Key[K_z]):
+			if press == False:
+				number += 1
+				press = True
+		elif press == True:
+			press = False
+		if number == 0:
+			WindowSurfaceObj.blit(chat, (175, 450)) #box
+			WindowSurfaceObj.blit(reimu1, (185,460))
+			WindowSurfaceObj.blit(note, (185, 490))
+			WindowSurfaceObj.blit(reimu_angry, (175,194))
+		if number == 1:
+			WindowSurfaceObj.blit(chat, (175, 450)) #box
+			WindowSurfaceObj.blit(marisa1, (185,460))
+			WindowSurfaceObj.blit(marisa_angry, (447,194))
+		if number == 2:
+			WindowSurfaceObj.blit(chat, (175, 450)) #box
+			WindowSurfaceObj.blit(reimu2, (185,460))
+			WindowSurfaceObj.blit(reimu_confused, (175,194))
+		if number == 3:
+			WindowSurfaceObj.blit(chat, (175, 450)) #box
+			WindowSurfaceObj.blit(marisa2, (185, 460))
+			WindowSurfaceObj.blit(marisa_angry, (447,194))
+		if number == 4:
+			spellcard = True
+			self.alive = False
+	def pattern_dialogue2(self):
+		GameControlObj.BulletList = []
+		global number
+		global press
+		global wincondition
+		self.behavior = EnemyClass.behavior_pass
+		Key = pygame.key.get_pressed()
+		if (Key[K_z]):
+			if press == False:
+				number += 1
+				press = True
+		elif press == True:
+			press = False
+		if number == 4:
+			WindowSurfaceObj.blit(chat, (175, 450)) #box
+			WindowSurfaceObj.blit(reimu3, (185,460))
+			WindowSurfaceObj.blit(reimu_normal, (175,194))
+		if number == 5:
+			WindowSurfaceObj.blit(chat, (175, 450)) #box
+			WindowSurfaceObj.blit(marisa3, (185, 460))
+			WindowSurfaceObj.blit(marisa_troubled, (447,194))
+		if number == 6:
+			wincondition = True
+	def pattern_pass(self):
+			pass
+			
+	def pattern_dropsmallpwr(self):
+		CreateMisc([ ##power
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.2,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_smallpwr
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.05,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_smallpwr
+					)],
+				pos = self.pos,
+				angle = 90,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_smallpwr
+				)
+		CreateMisc([ ##power
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.2,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_smallpwr
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.05,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_smallpwr
+					)],
+				pos = (self.pos[0] + 10, self.pos[1] - 10),
+				angle = 90,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_smallpwr
+				)
+		CreateMisc([ ##point
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.2,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_point
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.05,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_point
+					)],
+				pos = (self.pos[0] - 10, self.pos[1] - 10),
+				angle = 90,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_point
+				)
+	def pattern_droplargepwr(self):
+		CreateMisc([ ##power
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.2,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_largepwr
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.05,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_largepwr
+					)],
+				pos = self.pos,
+				angle = 90,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_largepwr
+				)
+		CreateMisc([ ##point
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.2,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_point
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.05,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_point
+					)],
+				pos = (self.pos[0] - 10, self.pos[1] - 10),
+				angle = 90,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_point
+				)
+	def pattern_droppwrs(self): ##
+		for a in range(0, 360, (360/6)):
+			CreateMisc([ ##power
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.2,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_largepwr
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.05,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_largepwr
+					)],
+				pos = boss_default_pos,
+				angle = a + AngleBetween(Player.pos, self.pos) - 15,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_largepwr
+				)
+		for a in range(0, 360, (360/4)):
+			CreateMisc([ ##point
+				dict(
+					age = 10,
+					pos = lambda s: s.pos,
+					angle = lambda s: 270,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed + 0.3,
+					accel = lambda s: s.accel,
+					accelmod = lambda s: 0,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_point
+					),
+				dict(
+					age = 55,
+					pos = lambda s: s.pos,
+					angle = lambda s: 90,
+					curve = lambda s: s.curve,
+					curvemod = lambda s: s.curvemod,
+					curvelim = lambda s: s.curvelim,
+					speed = lambda s: s.speed,
+					accel = lambda s: s.accel + 0.1,
+					accelmod = lambda s: s.accelmod,
+					accellim = lambda s: s.accellim,
+					color = lambda s: (0,0,0),
+					behavior = MiscClass.behavior_default,
+					species = MiscClass.species_point
+					)],
+				pos = (boss_default_pos[0] - 10, boss_default_pos[1] - 10),
+				angle = a + AngleBetween(Player.pos, self.pos) - 15,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 3,
+				color = (0, 0, 0),
+				behavior = MiscClass.behavior_default,
+				species = MiscClass.species_point
+				)
+		self.pattern = EnemyClass.pattern_pass
+	
+class BulletClass:
+	def __init__(self, kwargs, kwargswaps):
+		self.pos = kwargs['pos']
+		self.angle = kwargs['angle']
+		self.curve = kwargs['curve']
+		self.curvemod = kwargs['curvemod']
+		self.curvelim = kwargs['curvelim']
+		self.speed = kwargs['speed']
+		self.accel = kwargs['accel']
+		self.accelmod = kwargs['accelmod']
+		self.accellim = kwargs['accellim']
+		r,g,b = kwargs['color']
+		self.behavior = kwargs['behavior']
+		self.species = kwargs['species']
+		self.kwargswaps = kwargswaps
+		self.color = (r,g,b, 255)
+		self.alive = True
+		self.age = 0
+		self.speedchange = 0.0
+		self.anglechange = 0.0
+		
+		
+		# Temp
+		self.surf = pygame.Surface((12, 12))
+		pygame.draw.circle(self.surf, (self.color), (6,6), 6)
+		self.surf.convert()
+		
+	def __call__(self):
+		self.behavior(self)
+		self.species(self)
+		if (self.kwargswaps):
+			self.swapkwargs()
+		self.age += 1
+		return self.alive
+	def check_OOB(self):
+		if 150 <= self.pos[0] <= 600:
+			if 2 <= self.pos[1] <= 600:
+				return True
+		return False
+	def swapkwargs(self):
+		if (self.age >= self.kwargswaps[0]['age']):
+			self.angle = self.kwargswaps[0]['angle'](self)
+			self.curve = self.kwargswaps[0]['curve'](self)
+			self.curvemod = self.kwargswaps[0]['curvemod'](self)
+			self.curvelim = self.kwargswaps[0]['curvelim'](self)
+			self.speed = self.kwargswaps[0]['speed'](self)
+			self.accel = self.kwargswaps[0]['accel'](self)
+			self.accelmod = self.kwargswaps[0]['accelmod'](self)
+			self.accellim = self.kwargswaps[0]['accellim'](self)
+			r,g,b = self.kwargswaps[0]['color'](self)
+			self.behavior = self.kwargswaps[0]['behavior']
+			self.species = self.kwargswaps[0]['species']
+			self.color = (r,g,b, 255)
+			self.speedchange = 0.0
+			self.anglechange = 0.0
+			del self.kwargswaps[0]
+			
+			# Temp
+			pygame.draw.circle(self.surf, (self.color), (6,6), 6)
+			
+	# Behaviors
+	def behavior_default(self):
+		self.pos = MoveByAngle(self.angle, self.speed, self.pos)
+		if (self.anglechange < self.curvelim):
+			self.angle += self.curve
+			self.anglechange += abs(self.curve)
+			self.curve += self.curvemod
+		if (self.speedchange < self.accellim):
+			self.speed += self.accel
+			self.speedchange += abs(self.accel)
+			self.accel += self.accelmod
+		if (self.speed < 0):
+			self.speed = 0
+		self.alive = self.check_OOB()
+
+	def species_shot(self):
+		self.shotsurf = pygame.Surface((40, 42))
+		self.shotsurf.blit(Sprite.sheet, (0, 0), (23, 146, 40, 12)) ##same as animation sheet
+		self.shotsurf = pygame.transform.rotate(self.shotsurf, 90)
+		WindowSurfaceObj.blit(self.shotsurf, (self.pos[0] + 10, self.pos[1] - 7), None, BLEND_MAX)
+		for enemy in GameControlObj.EnemyList: #on hit
+			if DistanceBetween((self.pos[0] + 20, self.pos[1]), (enemy.pos[0] + 7, enemy.pos[1])) <= 6 + enemy.size:
+				self.alive = False
+				WindowSurfaceObj.blit(Player.hitboxsheet, (self.pos[0] + 10, self.pos[1] - 20), (16,97,17,15))
+				enemy.life -= 1
+				Player.score += 100
+	def species_xtrashot(self):
+		self.xtrashotsurf = pygame.Surface((14, 12))
+		self.xtrashotsurf.blit(Sprite.sheet, (0, 0), (33, 178, 14, 12)) ##same as animation sheet
+		self.xtrashotsurf = pygame.transform.rotate(self.xtrashotsurf, 90)
+		WindowSurfaceObj.blit(self.xtrashotsurf, (self.pos[0] + 10, self.pos[1] - 7), None, BLEND_MAX)
+		for enemy in GameControlObj.EnemyList: #on hit
+			if DistanceBetween((self.pos[0] + 20, self.pos[1]), (enemy.pos[0] + 7, enemy.pos[1])) <= 6 + enemy.size:
+				self.alive = False
+				WindowSurfaceObj.blit(Player.hitboxsheet, (self.pos[0] + 10, self.pos[1] - 20), (16,97,17,15))
+				enemy.life -= 1
+				Player.score += 100
+
+	def species_test(self):
+		WindowSurfaceObj.blit(self.surf, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 16, Player.pos[1] + 23), self.pos) <= 15:
+			if framecount % 15 == 0: ##for 1/4 second, only
+				Player.graze += 1
+				Player.score += 20 ##include this in every enemy bullet
+	def species_spinkbullet(self):
+		self.pinkbullet = pygame.Surface((8, 16))
+		self.pinkbullet.blit(Sprite.bulletsheet, (0, 0), (68, 64, 8, 16))
+		self.pinkbullet = pygame.transform.rotate(self.pinkbullet, self.angle + 180)
+		WindowSurfaceObj.blit(self.pinkbullet, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 15, Player.pos[1] + 23), self.pos) <= 18:
+			if framecount % 20 == 0:
+				Player.graze += 1
+				Player.score += 20	
+	def species_sspinkbullet(self):
+		self.pinkbullet = pygame.Surface((8, 16))
+		self.pinkbullet.blit(Sprite.bulletsheet, (0, 0), (68, 64, 8, 16))
+		self.pinkbullet = pygame.transform.rotate(self.pinkbullet, 360 - AngleBetween(self.pos, Player.pos))
+		WindowSurfaceObj.blit(self.pinkbullet, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 15, Player.pos[1] + 23), self.pos) <= 18:
+			if framecount % 20 == 0:
+				Player.graze += 1
+				Player.score += 20				
+	def species_ssspinkbullet(self):
+		self.pinkbullet = pygame.Surface((8, 16))
+		self.pinkbullet.blit(Sprite.bulletsheet, (0, 0), (68, 64, 8, 16))
+		self.pinkbullet = pygame.transform.rotate(self.pinkbullet, 360 - AngleBetween(Player.pos, self.pos) + 270)
+		WindowSurfaceObj.blit(self.pinkbullet, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 15, Player.pos[1] + 23), self.pos) <= 18:
+			if framecount % 20 == 0:
+				Player.graze += 1
+				Player.score += 20
+	
+	def species_pinkbullet(self):
+		self.pinkbullet = pygame.Surface((8, 16))
+		self.pinkbullet.blit(Sprite.bulletsheet, (0, 0), (68, 64, 8, 16))
+		self.pinkbullet = pygame.transform.rotate(self.pinkbullet, 270 - self.angle)
+		WindowSurfaceObj.blit(self.pinkbullet, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 15, Player.pos[1] + 23), self.pos) <= 18:
+			if framecount % 20 == 0:
+				Player.graze += 1
+				Player.score += 20
+	def species_bluebullet(self):
+		self.bluebullet = pygame.Surface((8, 16))
+		self.bluebullet.blit(Sprite.bulletsheet, (0, 0), (100, 64, 8, 16))
+		self.bluebullet = pygame.transform.rotate(self.bluebullet, 270 - self.angle)
+		WindowSurfaceObj.blit(self.bluebullet, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 15, Player.pos[1] + 23), self.pos) <= 18:
+			if framecount % 20 == 0:
+				Player.graze += 1
+				Player.score += 20
+	def species_redbullet(self):
+		self.redbullet = pygame.Surface((8, 16))
+		self.redbullet.blit(Sprite.bulletsheet, (0, 0), (36, 64, 8, 16))
+		self.redbullet = pygame.transform.rotate(self.redbullet, 270 - self.angle)
+		WindowSurfaceObj.blit(self.redbullet, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 15, Player.pos[1] + 23), self.pos) <= 18:
+			if framecount % 20 == 0:
+				Player.graze += 1
+				Player.score += 20
+				
+class MiscClass:
+	def __init__(self, kwargs, kwargswaps):
+		self.sheet = pygame.image.load('etama2.png')
+		
+		self.pos = kwargs['pos']
+		self.angle = kwargs['angle']
+		self.curve = kwargs['curve']
+		self.curvemod = kwargs['curvemod']
+		self.curvelim = kwargs['curvelim']
+		self.speed = kwargs['speed']
+		self.accel = kwargs['accel']
+		self.accelmod = kwargs['accelmod']
+		self.accellim = kwargs['accellim']
+		r,g,b = kwargs['color']
+		self.behavior = kwargs['behavior']
+		self.species = kwargs['species']
+		self.kwargswaps = kwargswaps
+		self.color = (r,g,b, 255)
+		self.alive = True
+		self.age = 0
+		self.speedchange = 0.0
+		self.anglechange = 0.0
+		
+		# Temp
+		self.surf = pygame.Surface((12, 12))
+		pygame.draw.circle(self.surf, (self.color), (6,6), 6)
+		self.surf.convert()
+		
+	def __call__(self):
+		self.behavior(self)
+		self.species(self)
+		if (self.kwargswaps):
+			self.swapkwargs()
+		self.age += 1
+		return self.alive
+	def check_OOB(self):
+		if ((0 - (window_x * 0.1)) <= self.pos[0] <= (window_x * 1.1)):
+			if ((0 - (window_y * 0.1)) <= self.pos[1] <= (window_y * 1.1)):
+				return True
+		return False
+	def swapkwargs(self):
+		if (self.age >= self.kwargswaps[0]['age']):
+			self.angle = self.kwargswaps[0]['angle'](self)
+			self.curve = self.kwargswaps[0]['curve'](self)
+			self.curvemod = self.kwargswaps[0]['curvemod'](self)
+			self.curvelim = self.kwargswaps[0]['curvelim'](self)
+			self.speed = self.kwargswaps[0]['speed'](self)
+			self.accel = self.kwargswaps[0]['accel'](self)
+			self.accelmod = self.kwargswaps[0]['accelmod'](self)
+			self.accellim = self.kwargswaps[0]['accellim'](self)
+			r,g,b = self.kwargswaps[0]['color'](self)
+			self.behavior = self.kwargswaps[0]['behavior']
+			self.species = self.kwargswaps[0]['species']
+			self.color = (r,g,b, 255)
+			self.speedchange = 0.0
+			self.anglechange = 0.0
+			del self.kwargswaps[0]
+			
+			# Temp
+			pygame.draw.circle(self.surf, (self.color), (6,6), 6)
+			
+	# Behaviors
+	def behavior_default(self):
+		if self.pos[1] <= 5:
+			self.angle = 90
+		self.pos = MoveByAngle(self.angle, self.speed, self.pos)
+		if (self.anglechange < self.curvelim):
+			self.angle += self.curve
+			self.anglechange += abs(self.curve)
+			self.curve += self.curvemod
+		if (self.speedchange < self.accellim):
+			self.speed += self.accel
+			self.speedchange += abs(self.accel)
+			self.accel += self.accelmod
+		if (self.speed < 0):
+			self.speed = 0
+		self.alive = self.check_OOB()
+	def species_fullpowermode(self):
+		self.fpmtext = font.render('Full Power Mode!!', 1, (155,48,255))
+		WindowSurfaceObj.blit(self.fpmtext, self.pos)
+		if self.age == 60:
+			self.alive = False
+	def species_spellcardfailed(self):
+		self.scftext = font.render('Spell Card Failed', 1, (155,48,255))
+		WindowSurfaceObj.blit(self.fpmtext, self.pos)
+		if self.age == 60:
+			self.alive = False
+	def species_smallpwr(self): ##assign power
+		self.smallpwr = pygame.Surface((12,12))
+		self.smallpwr.blit(self.sheet, (0, 0), (2, 66, 12, 12))
+		WindowSurfaceObj.blit(self.smallpwr, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 16, Player.pos[1] + 23), self.pos) <= 15:
+			if Player.life > 0:
+				self.alive = False
+				Player.power += 1 #change
+				Player.score += 10
+	def species_largepwr(self): ##assign power
+		self.largepwr = pygame.Surface((16,16))
+		self.largepwr.blit(self.sheet, (0, 0), (32, 64, 16, 16))
+		WindowSurfaceObj.blit(self.largepwr, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 16, Player.pos[1] + 23), self.pos) <= 15:
+			if Player.life > 0:
+				self.alive = False
+				Player.power += 5 #change
+				Player.score += 30
+	def species_point(self):
+		self.point = pygame.Surface((12, 12))
+		self.point.blit(self.sheet, (0, 0), (18, 66, 12, 12))
+		WindowSurfaceObj.blit(self.point, (int(self.pos[0] - (self.surf.get_width() * 0.5)), int(self.pos[1] - (self.surf.get_height() * 0.5))), None, BLEND_MAX)
+		if DistanceBetween((Player.pos[0] + 16, Player.pos[1] + 23), self.pos) <= 15:
+			if Player.life > 0:
+				self.alive = False
+				Player.point += 1
+				Player.score += (270 * self.pos[1])
+
+	
+WindowSurfaceObj = pygame.display.set_mode((window_x, window_y))
+ClockObj = pygame.time.Clock()
+FPS = 60
+
+font = pygame.font.SysFont('Lucida Console', 20)
+
+Player = PlayerClass()
+GameControlObj = GameControlClass()
+CreateEnemy = GameControlObj.CreateEnemy
+CreateBullet = GameControlObj.CreateBullet
+CreateMisc = GameControlObj.CreateMisc
+global running
+running = True
+#start = False
+
+def frame(int = 60):
+	for i in range(0, int):
+		GameControlObj()
+		if not running:
+			break
+
+		
+##if start == False:
+##        running = False
+##        mainmenu = pygame.image.load('reimu_menu2.jpg')
+##        WindowSurfaceObj.blit(mainmenu, (0,0))
+##        mainmenutext = bigfont.render('Press X to start...', 1, (255, 255, 255))
+##        WindowSurfaceObj.blit(mainmenutext, (400,555))
+##        Key = pygame.key.get_pressed()
+##        if (Key[K_x]):
+##                running = True
+##                start = True
+	
+while running:
+	pygame.display.set_caption('Touhou v.Stuy: Appropriation of Spring      FPS: %s' % str(ClockObj.get_fps()))
+	frame()
+
+	
+	global framecount
+	global timer
+	global spellcard
+	if framecount == 60: #pt, pwr: 3, 3
+		CreateEnemy(
+			[dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: s.angle,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 0,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redblue
+			),
+			dict(
+			age = 119,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 2,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 1,
+			pos = [258, 1],
+			size = 16,
+			angle = 90,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = -0.1,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy(
+			[dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: s.angle,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 0,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redblue
+			),
+			dict(
+			age = 119,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 2,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 1,
+			pos = [375, 1],
+			size = 16,
+			angle = 90,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = -0.1,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy(
+			[dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: s.angle,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 0,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redblue
+			),
+			dict(
+			age = 119,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 2,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 1,
+			pos = [492, 1],
+			size = 16,
+			angle = 90,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = -0.1,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+	if framecount == 240: #2, 6
+		CreateEnemy(
+			life = 2,
+			pos = [150, 100],
+			size = 16,
+			angle = 0,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 1.5,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_greenangel,
+			pattern = EnemyClass.pattern_pinkcircle60
+		)
+		CreateEnemy(
+			life = 2,
+			pos = [600, 100],
+			size = 16,
+			angle = 180,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 1.5,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_greenangel,
+			pattern = EnemyClass.pattern_pinkcircle60
+		)
+	if framecount == 660: #3, 3
+		CreateEnemy(
+			[dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: s.angle,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 0,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pinkcircle60
+			),
+			dict(
+			age = 119,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 180,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 2,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 2,
+			pos = [258, 1],
+			size = 16,
+			angle = 90,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = -0.1,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy(
+			[dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: s.angle,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 0,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pinkcircle60
+			),
+			dict(
+			age = 119,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 2,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 2,
+			pos = [375, 1],
+			size = 16,
+			angle = 90,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = -0.1,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy(
+			[dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: s.angle,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 0,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pinkcircle60
+			),
+			dict(
+			age = 119,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 0,
+			curve = lambda s: 0,
+			curvemod = lambda s: 0,
+			curvelim = lambda s: 0,
+			speed = lambda s: 2,
+			accel = lambda s: 0,
+			accelmod = lambda s: 0,
+			accellim = lambda s: 0,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 2,
+			pos = [492, 1],
+			size = 16,
+			angle = 90,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = -0.1,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+	if framecount == 1080: #2, 6
+		CreateEnemy(
+			life = 3,
+			pos = [150, 100],
+			size = 16,
+			angle = 30,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_greenangel,
+			pattern = EnemyClass.pattern_bluedown120
+		)
+		CreateEnemy(
+			life = 3,
+			pos = [600, 100],
+			size = 16,
+			angle = 150,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_greenangel,
+			pattern = EnemyClass.pattern_bluedown120
+		)
+	if framecount == 1380: #6, 6
+		CreateEnemy([
+			dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			),
+			dict(
+			age = 90,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redbluehalf
+			),
+			dict(
+			age = 210,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 3,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 10,
+			pos = [150, 100],
+			size = 16,
+			angle = 0,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy([
+			dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			),
+			dict(
+			age = 90,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redbluehalf
+			),
+			dict(
+			age = 210,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 3,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 10,
+			pos = [600, 150],
+			size = 16,
+			angle = 180,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy([
+			dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			),
+			dict(
+			age = 90,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redbluehalf
+			),
+			dict(
+			age = 210,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 3,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 10,
+			pos = [150, 200],
+			size = 16,
+			angle = 0,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy([
+			dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			),
+			dict(
+			age = 90,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redbluehalf
+			),
+			dict(
+			age = 210,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 3,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 10,
+			pos = [600, 250],
+			size = 16,
+			angle = 180,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy([
+			dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			),
+			dict(
+			age = 90,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redbluehalf
+			),
+			dict(
+			age = 210,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 3,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 10,
+			pos = [150, 300],
+			size = 16,
+			angle = 0,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+		CreateEnemy([
+			dict(
+			age = 60,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			),
+			dict(
+			age = 90,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 0,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_redbluehalf
+			),
+			dict(
+			age = 210,
+			life = lambda s: s.life,
+			pos = lambda s: s.pos,
+			size = lambda s: s.size,
+			angle = lambda s: 270,
+			curve = lambda s: s.curve,
+			curvemod = lambda s: s.curvemod,
+			curvelim = lambda s: s.curvelim,
+			speed = lambda s: 3,
+			accel = lambda s: s.accel,
+			accelmod = lambda s: s.accelmod,
+			accellim = lambda s: s.accellim,
+			color = lambda s: (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+			)],
+			life = 10,
+			pos = [600, 350],
+			size = 16,
+			angle = 180,
+			curve = 0,
+			curvemod = 0,
+			curvelim = 0,
+			speed = 3,
+			accel = 0,
+			accelmod = 0,
+			accellim = 0,
+			color = (100, 100, 100),
+			behavior = EnemyClass.behavior_default,
+			species = EnemyClass.species_blueangel,
+			pattern = EnemyClass.pattern_pass
+		)
+	if framecount == 1920:
+		timer = 0
+		CreateEnemy([
+				dict(
+				age = 60,
+				life = lambda s: s.life,
+				pos = lambda s: s.pos,
+				size = lambda s: s.size,
+				angle = lambda s: 270,
+				curve = lambda s: s.curve,
+				curvemod = lambda s: s.curvemod,
+				curvelim = lambda s: s.curvelim,
+				speed = lambda s: 0,
+				accel = lambda s: s.accel,
+				accelmod = lambda s: s.accelmod,
+				accellim = lambda s: s.accellim,
+				color = lambda s: (100, 100, 100),
+				behavior = EnemyClass.behavior_default,
+				species = EnemyClass.species_marisa,
+				pattern = EnemyClass.pattern_dialogue
+				)
+				],
+				life = 1800,
+				pos = (386,1),
+				size = 32,
+				angle = 90,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 3,
+				accel = 0,
+				accelmod = 0,
+				accellim = 0,
+				color = (100, 100, 100),
+				behavior = EnemyClass.behavior_default,
+				species = EnemyClass.species_marisa,
+				pattern = EnemyClass.pattern_noatk
+				)
+	if spellcard == True:
+		spellcard = False
+		timer = 70
+		CreateEnemy(
+				[
+				dict(
+				age = 60,
+				life = lambda s: s.life,
+				pos = lambda s: s.pos,
+				size = lambda s: s.size,
+				angle = lambda s: 0,
+				curve = lambda s: s.curve,
+				curvemod = lambda s: s.curvemod,
+				curvelim = lambda s: s.curvelim,
+				speed = lambda s: 0.8,
+				accel = lambda s: s.accel,
+				accelmod = lambda s: s.accelmod,
+				accellim = lambda s: s.accellim,
+				color = lambda s: (100, 100, 100),
+				behavior = EnemyClass.behavior_default,
+				species = EnemyClass.species_marisa,
+				pattern = EnemyClass.pattern_redblue45
+				),
+				dict(
+				age = 180,
+				life = lambda s: s.life,
+				pos = lambda s: s.pos,
+				size = lambda s: s.size,
+				angle = lambda s: 180,
+				curve = lambda s: s.curve,
+				curvemod = lambda s: s.curvemod,
+				curvelim = lambda s: s.curvelim,
+				speed = lambda s: 0.8,
+				accel = lambda s: s.accel,
+				accelmod = lambda s: s.accelmod,
+				accellim = lambda s: s.accellim,
+				color = lambda s: (100, 100, 100),
+				behavior = EnemyClass.behavior_default,
+				species = EnemyClass.species_marisa,
+				pattern = EnemyClass.pattern_redblue45
+				),
+				dict(
+				age = 360,
+				life = lambda s: s.life,
+				pos = lambda s: s.pos,
+				size = lambda s: s.size,
+				angle = lambda s: 0,
+				curve = lambda s: s.curve,
+				curvemod = lambda s: s.curvemod,
+				curvelim = lambda s: s.curvelim,
+				speed = lambda s: 0.8,
+				accel = lambda s: s.accel,
+				accelmod = lambda s: s.accelmod,
+				accellim = lambda s: s.accellim,
+				color = lambda s: (100, 100, 100),
+				behavior = EnemyClass.behavior_default,
+				species = EnemyClass.species_marisa,
+				pattern = EnemyClass.pattern_pinkcircle60
+				),
+				dict(
+				age = 420,
+				life = lambda s: s.life,
+				pos = lambda s: s.pos,
+				size = lambda s: s.size,
+				angle = lambda s: 0,
+				curve = lambda s: s.curve,
+				curvemod = lambda s: s.curvemod,
+				curvelim = lambda s: s.curvelim,
+				speed = lambda s: 0,
+				accel = lambda s: s.accel,
+				accelmod = lambda s: s.accelmod,
+				accellim = lambda s: s.accellim,
+				color = lambda s: (100, 100, 100),
+				behavior = EnemyClass.behavior_default,
+				species = EnemyClass.species_marisa,
+				pattern = EnemyClass.pattern_sakura
+				)],
+				life = 1800,
+				pos = boss_default_pos,
+				size = 32,
+				angle = 0,
+				curve = 0,
+				curvemod = 0,
+				curvelim = 0,
+				speed = 0,
+				accel = 0,
+				accelmod = 0,
+				accellim = 0,
+				color = (100, 100, 100),
+				behavior = EnemyClass.behavior_default,
+				species = EnemyClass.species_marisa,
+				pattern = EnemyClass.pattern_pass
+				)
+pygame.quit()
