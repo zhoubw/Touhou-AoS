@@ -1,3 +1,4 @@
+#Thanks Silver_Skree... whoever you are
 import pygame
 from pygame.locals import *
 import math
